@@ -24,15 +24,17 @@ class WaveformRenderer {
             sweepBar: '#ffffff',
             
             // Kurvefarger
-            pressure: '#fbbf24',       // Hamilton Gul/Amber
+            pressure: '#fbbf24',       // Gul/Amber (Paw)
             pressureFill: 'rgba(251, 191, 36, 0.08)',
             
-            flow: '#f43f5e',           // Hamilton Magenta/Rosa
-            flowFillPos: 'rgba(244, 63, 94, 0.20)', // Innpust areal (over 0-linje)
-            flowFillNeg: 'rgba(244, 63, 94, 0.14)', // Utpust areal (under 0-linje)
+            flow: '#22c55e',           // Klinisk Grønn (Flow)
+            flowTrigger: '#d946ef',    // Lilla / Magenta triggerfarge (Servo-standard)
+            flowFillPos: 'rgba(34, 197, 94, 0.16)', // Innpust areal (over 0-linje)
+            flowFillNeg: 'rgba(34, 197, 94, 0.10)', // Utpust areal (under 0-linje)
+            flowFillTrigger: 'rgba(217, 70, 239, 0.20)', // Areal under lilla trigger
             
-            volume: '#10b981',         // Grønn
-            volumeFill: 'rgba(16, 185, 129, 0.10)',
+            volume: '#06b6d4',         // Cyan / Lys blå (Volum)
+            volumeFill: 'rgba(6, 182, 212, 0.10)',
             
             zeroLine: 'rgba(255, 255, 255, 0.65)',   // Knivskarp 0-linje
             peepLine: 'rgba(251, 191, 36, 0.35)',   // PEEP/EPAP referanselinje
@@ -40,7 +42,7 @@ class WaveformRenderer {
             text: '#8295b5',
             textDim: '#4f6485',
             textBright: '#ffffff',
-            triggerMark: '#f43f5e'     // Triggermarkør ▲
+            triggerMark: '#d946ef'     // Triggermarkør ▲
         };
 
         // Layout & Marger for kurvefeltet
@@ -58,6 +60,7 @@ class WaveformRenderer {
         this.pressureData = [];
         this.volumeData = [];
         this.flowData = [];
+        this.flowTriggerData = []; // Lagrer triggerstatus per pikselposisjon på flowkurven
         this.triggerData = [];    // Lagrer trigger-trekanter per pikselposisjon
 
         // Skalaer (Min / Maks grenser)
@@ -105,11 +108,12 @@ class WaveformRenderer {
         this.pressureData = new Array(this.activeWidth).fill(null);
         this.volumeData = new Array(this.activeWidth).fill(null);
         this.flowData = new Array(this.activeWidth).fill(null);
+        this.flowTriggerData = new Array(this.activeWidth).fill(false);
         this.triggerData = new Array(this.activeWidth).fill(false);
     }
 
     // Legg til nye dataprøver fra simulatoren og oppdater sweep
-    addSample(dt, paw, volume, flow, isTriggered = false, epap = 5) {
+    addSample(dt, paw, volume, flow, isTriggered = false, epap = 5, isTriggerPhase = false) {
         if (!this.activeWidth || this.activeWidth <= 0) return;
 
         this.currentEpap = epap;
@@ -144,6 +148,7 @@ class WaveformRenderer {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
+                this.flowTriggerData[x] = isTriggerPhase;
                 this.triggerData[x] = (x === startX && isTriggered);
             }
         } else {
@@ -152,12 +157,14 @@ class WaveformRenderer {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
+                this.flowTriggerData[x] = isTriggerPhase;
                 this.triggerData[x] = (x === startX && isTriggered);
             }
             for (let x = 0; x <= endX; x++) {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
+                this.flowTriggerData[x] = isTriggerPhase;
                 this.triggerData[x] = (x === 0 && isTriggered);
             }
         }
@@ -435,8 +442,8 @@ class WaveformRenderer {
             return zeroY - ratio * halfH;
         };
 
-        // Tegn Flow-kurven med areal-fylling (over 0 = innpust, under 0 = utpust)
-        this._renderFlowWaveformWithArea(ctx, this.flowData, toY, zeroY, leftM, activeW);
+        // Tegn Flow-kurven med areal-fylling og lilla trigger-markering
+        this._renderFlowWaveformWithArea(ctx, this.flowData, this.flowTriggerData, toY, zeroY, leftM, activeW);
     }
 
     _drawVolumeTrack(ctx, track, leftM, activeW) {
@@ -539,20 +546,17 @@ class WaveformRenderer {
         ctx.restore();
     }
 
-    // Tegner Flow-kurve med distinkt areal-fylling over og under 0-linjen
-    _renderFlowWaveformWithArea(ctx, data, toYFn, zeroY, leftM, activeW) {
+    // Tegner Flow-kurve med distinkt areal-fylling over og under 0-linjen og lilla trigger-markering
+    _renderFlowWaveformWithArea(ctx, data, triggerData, toYFn, zeroY, leftM, activeW) {
         const sweepX = this.sweepX;
         const eraseEnd = (sweepX + this.eraseWidth) % activeW;
 
         ctx.save();
-        ctx.lineWidth = 2.2;
-        ctx.strokeStyle = this.colors.flow;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
         const drawSegment = (fromX, toX) => {
             if (fromX >= toX) return;
-            let drawing = false;
 
             // 1. Tegn areal-fylling (Inspirasjon over 0-linje og Ekspirasjon under 0-linje)
             for (let x = fromX; x <= toX; x++) {
@@ -560,30 +564,61 @@ class WaveformRenderer {
                 if (val !== null && val !== undefined && Math.abs(val) > 0.5) {
                     const screenX = leftM + x;
                     const screenY = toYFn(val);
+                    const isTrig = !!triggerData[x];
 
-                    ctx.fillStyle = (val > 0) ? this.colors.flowFillPos : this.colors.flowFillNeg;
+                    if (val > 0) {
+                        ctx.fillStyle = isTrig ? this.colors.flowFillTrigger : this.colors.flowFillPos;
+                    } else {
+                        ctx.fillStyle = this.colors.flowFillNeg;
+                    }
                     ctx.fillRect(screenX, Math.min(zeroY, screenY), 1.2, Math.abs(screenY - zeroY));
                 }
             }
 
-            // 2. Tegn selve kurvelinjen
-            ctx.beginPath();
+            // 2. Tegn selve kurvelinjen med fargeskifte til lilla under triggerfasen
+            let currentIsTrig = null;
+            let pathStarted = false;
+
             for (let x = fromX; x <= toX; x++) {
                 const val = data[x];
-                if (val !== null && val !== undefined) {
-                    const screenX = leftM + x;
-                    const screenY = toYFn(val);
-                    if (!drawing) {
-                        ctx.moveTo(screenX, screenY);
-                        drawing = true;
-                    } else {
-                        ctx.lineTo(screenX, screenY);
+                if (val === null || val === undefined) {
+                    if (pathStarted) {
+                        ctx.stroke();
+                        pathStarted = false;
+                        currentIsTrig = null;
                     }
+                    continue;
+                }
+
+                const isTrig = !!triggerData[x];
+                const screenX = leftM + x;
+                const screenY = toYFn(val);
+
+                if (!pathStarted) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = isTrig ? this.colors.flowTrigger : this.colors.flow;
+                    ctx.lineWidth = isTrig ? 2.6 : 2.2;
+                    ctx.moveTo(screenX, screenY);
+                    pathStarted = true;
+                    currentIsTrig = isTrig;
+                } else if (isTrig !== currentIsTrig) {
+                    // Sømløs overgang: trekk nåværende fargelinje helt fram til dette punktet
+                    ctx.lineTo(screenX, screenY);
+                    ctx.stroke();
+
+                    // Start ny linje med ny farge fra nøyaktig samme punkt
+                    ctx.beginPath();
+                    ctx.strokeStyle = isTrig ? this.colors.flowTrigger : this.colors.flow;
+                    ctx.lineWidth = isTrig ? 2.6 : 2.2;
+                    ctx.moveTo(screenX, screenY);
+                    currentIsTrig = isTrig;
                 } else {
-                    drawing = false;
+                    ctx.lineTo(screenX, screenY);
                 }
             }
-            ctx.stroke();
+            if (pathStarted) {
+                ctx.stroke();
+            }
         };
 
         if (sweepX + this.eraseWidth < activeW) {

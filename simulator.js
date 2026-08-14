@@ -38,6 +38,7 @@ class VentilatorSimulator {
             peakFlowInPhase: 0,    // L/min (brukes til flow-cycling)
             breathStartTime: 0,
             justTriggered: false,
+            isTriggerPhase: false,
             
             // Kontinuerlige monitor-målinger
             measured: {
@@ -108,6 +109,10 @@ class VentilatorSimulator {
         }
 
         if (this.state.phase === 'inspiration') {
+            // Triggerfase: aktiv i den initielle stigningsfasen (trigger/rise time)
+            const triggerDuration = Math.max(0.12, Math.min(0.20, this.settings.riseTime * 1.05));
+            this.state.isTriggerPhase = (this.state.timeInPhase <= triggerDuration);
+
             // --- INSPIRASJONSFASEN ---
             // 1. Trykkstigning mot IPAP (S-kurve / eksponensiell glatting basert på riseTime)
             const riseProgress = Math.min(1.0, this.state.timeInPhase / Math.max(0.05, this.settings.riseTime));
@@ -188,10 +193,12 @@ class VentilatorSimulator {
         this.state.peakFlowInPhase = 0;
         this.state.volume = 0; // Nullstill tidalvolum for dette innpustet
         this.state.justTriggered = true; // Flagg for triggerindikator på kurvemonitor
+        this.state.isTriggerPhase = true; // Aktiv triggerfase for flowkurve
     }
 
     _startExpiration() {
         this.state.phase = 'expiration';
+        this.state.isTriggerPhase = false;
         const ti = this.state.timeInPhase;
         this.state.timeInPhase = 0;
 

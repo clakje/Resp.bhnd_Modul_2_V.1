@@ -269,6 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 2. Send sample til grafisk monitor
             const wasTriggered = simulator.state.justTriggered;
+            const isTriggerPhase = simulator.state.isTriggerPhase;
             simulator.state.justTriggered = false;
 
             renderer.addSample(
@@ -277,7 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 simulator.state.volume,
                 simulator.state.flow,
                 wasTriggered,
-                simulator.settings.epap
+                simulator.settings.epap,
+                isTriggerPhase
             );
 
             // 3. Oppdater måletall
