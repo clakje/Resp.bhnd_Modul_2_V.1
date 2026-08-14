@@ -268,11 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
             simulator.step(elapsedSec);
 
             // 2. Send sample til grafisk monitor
+            const wasTriggered = simulator.state.justTriggered;
+            simulator.state.justTriggered = false;
+
             renderer.addSample(
                 elapsedSec,
                 simulator.state.paw,
                 simulator.state.volume,
-                simulator.state.flow
+                simulator.state.flow,
+                wasTriggered,
+                simulator.settings.epap
             );
 
             // 3. Oppdater måletall

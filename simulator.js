@@ -37,6 +37,7 @@ class VentilatorSimulator {
             pmus: 0,               // cmH2O
             peakFlowInPhase: 0,    // L/min (brukes til flow-cycling)
             breathStartTime: 0,
+            justTriggered: false,
             
             // Kontinuerlige monitor-målinger
             measured: {
@@ -186,6 +187,7 @@ class VentilatorSimulator {
         this.state.breathStartTime = this.state.totalTime;
         this.state.peakFlowInPhase = 0;
         this.state.volume = 0; // Nullstill tidalvolum for dette innpustet
+        this.state.justTriggered = true; // Flagg for triggerindikator på kurvemonitor
     }
 
     _startExpiration() {

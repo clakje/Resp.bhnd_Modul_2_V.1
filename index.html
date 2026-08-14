@@ -127,6 +127,7 @@
                 <button class="tab-btn active" data-tab="tab-machine">Respiratorinnstillinger</button>
                 <button class="tab-btn" data-tab="tab-patient">Pasientfysiologi</button>
                 <button class="tab-btn" data-tab="tab-advanced">Avansert & Lekkasje</button>
+                <button class="tab-btn" data-tab="tab-curves">Kurveforståelse (Hamilton)</button>
             </div>
 
             <!-- Fane-innhold -->
@@ -353,6 +354,46 @@
                     </div>
                 </div>
 
+                <!-- Fane 4: Kurveforståelse (Hamilton-standard) -->
+                <div class="tab-pane" id="tab-curves" style="display: none;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px;">
+                        
+                        <div class="control-card" style="border-left: 3px solid var(--color-pressure);">
+                            <div class="control-header">
+                                <div class="control-label" style="color: var(--color-pressure);">🟡 Trykk-kurven (Paw [cmH₂O])</div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+                                <p>• <strong>Bunnlinje (0 cmH₂O):</strong> Den heltrukne hvite grunnlinjen nederst i sporet angir atmosfærisk nulltrykk.</p>
+                                <p>• <strong>PEEP / EPAP-nivå:</strong> Den stiplede gule linjen markerer basetrykket pasienten hviler på. Under innpust stiger trykket raskt mot IPAP (topptrykk).</p>
+                            </div>
+                        </div>
+
+                        <div class="control-card" style="border-left: 3px solid var(--color-flow);">
+                            <div class="control-header">
+                                <div class="control-label" style="color: var(--color-flow);">🔴 Flow-kurven (Flow / Débit [L/min])</div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+                                <p>• <strong>Null-linje (0 L/min):</strong> Tydelig linje i midten av sporet som skiller luftstrøm inn og ut.</p>
+                                <p>• <strong>Innpust (+ over linjen):</strong> Luft strømmer inn i pasienten/tuben.</p>
+                                <p>• <strong>Utpust (- under linjen):</strong> Luft strømmer passivt ut av lungene.</p>
+                                <p>• <strong>Arealbalanse:</strong> Rommet (arealet) mellom kurven og 0-linjen er like stort over og under ved normal ventilasjon uten lekkasje (&int; Flow dt = V<sub>t</sub>). Ved maskelekkasje vil utåndet areal bli mindre enn innåndet areal.</p>
+                            </div>
+                        </div>
+
+                        <div class="control-card" style="border-left: 3px solid var(--color-volume);">
+                            <div class="control-header">
+                                <div class="control-label" style="color: var(--color-volume);">🟢 Tidalvolum (V [ml])</div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+                                <p>• <strong>Volumoppbygning:</strong> Viser det faktiske volumet som akkumuleres i lungene under inspirasjon.</p>
+                                <p>• <strong>Tømming til grunnlinje:</strong> Kurven returnerer jevnt til 0 ml grunnlinjen under ekspirasjon når lungene tømmes.</p>
+                                <p>• <strong>Triggermarkør (▲):</strong> Rosa trekanter langs tidslinjen markerer det eksakte øyeblikket et nytt innpust trigges.</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
             </div>
 
             <!-- Pedagogisk Innsiktsboks -->
@@ -377,8 +418,8 @@
     </main>
 
     <!-- Skript -->
-    <script src="simulator.js?v=1.1"></script>
-    <script src="renderer.js?v=1.1"></script>
-    <script src="app.js?v=1.1"></script>
+    <script src="simulator.js?v=1.2"></script>
+    <script src="renderer.js?v=1.2"></script>
+    <script src="app.js?v=1.2"></script>
 </body>
 </html>
