@@ -217,6 +217,37 @@
                             </div>
                         </div>
 
+                        <!-- Trigger (Type & Følsomhet) -->
+                        <div class="control-card" id="cardTrigger">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Inspirasjonstrigger</div>
+                                    <div class="control-sublabel" id="triggerSublabel">Flow-trigger (1–5 L/min)</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeTrigger" style="color: var(--color-flow-trigger); border-color: rgba(217, 70, 239, 0.4);">3.0 L/min</span>
+                            </div>
+
+                            <!-- Trigger Type Velger -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0 10px 0;">
+                                <button type="button" class="trigger-type-btn active" id="btnTrigFlow" data-type="flow">
+                                    🟢 Flow-trigger (V̇)
+                                </button>
+                                <button type="button" class="trigger-type-btn" id="btnTrigPressure" data-type="pressure">
+                                    🟡 Trykk-trigger (P)
+                                </button>
+                            </div>
+
+                            <div class="slider-wrapper">
+                                <button class="step-btn" id="btnTrigStepDown" data-target="sliderTrigger" data-step="-0.5">-</button>
+                                <input type="range" id="sliderTrigger" min="1" max="5" step="0.5" value="3">
+                                <button class="step-btn" id="btnTrigStepUp" data-target="sliderTrigger" data-step="0.5">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span id="triggerLimitMin">1.0 L/min (Mest sensitiv)</span>
+                                <span id="triggerLimitMax">5.0 L/min (Mindre sensitiv)</span>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -364,7 +395,8 @@
                             </div>
                             <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
                                 <p>• <strong>Bunnlinje (0 cmH₂O):</strong> Den heltrukne hvite grunnlinjen nederst i sporet angir atmosfærisk nulltrykk.</p>
-                                <p>• <strong>PEEP / EPAP-nivå:</strong> Den stiplede gule linjen markerer basetrykket pasienten hviler på. Under innpust stiger trykket raskt mot IPAP (topptrykk).</p>
+                                <p>• <strong>PEEP / EPAP-nivå:</strong> Den stiplede gule linjen markerer basetrykket pasienten hviler på.</p>
+                                <p>• <strong>Lilla trykk-trigger:</strong> Ved bruk av trykk-trigger oppstår en negativ bølge/undertrykk under EPAP som vises i <strong>lilla</strong>. Når innstilt trykkfall (-1 til -5 cmH₂O) oppnås, trigges maskinen og trykket stiger mot IPAP (gul).</p>
                             </div>
                         </div>
 
@@ -374,7 +406,7 @@
                             </div>
                             <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
                                 <p>• <strong>Null-linje (0 L/min):</strong> Tydelig linje i midten av sporet som skiller luftstrøm inn og ut.</p>
-                                <p>• <strong>Lilla triggerfase:</strong> Ved innpuststart skifter kurven til <strong>lilla/magenta</strong> på oppstigningen. Dette indikerer at respiratoren registrerer og trigger på pasientens egen innsats (Servo-standard).</p>
+                                <p>• <strong>Lilla flow-trigger:</strong> Ved flow-trigger vises den initielle pasientinnsatsen (1–5 L/min) i <strong>lilla</strong> helt i starten av innpustet. Når innstilt terskel nås, overtar respiratoren og leverer full trykkstøtte (grønn).</p>
                                 <p>• <strong>Innpust (+ over linjen) & Utpust (- under linjen):</strong> Grønn kurve med arealvisning for inn- og utåndet gass.</p>
                             </div>
                         </div>
@@ -417,8 +449,8 @@
     </main>
 
     <!-- Skript -->
-    <script src="simulator.js?v=1.3"></script>
-    <script src="renderer.js?v=1.3"></script>
-    <script src="app.js?v=1.3"></script>
+    <script src="simulator.js?v=1.5"></script>
+    <script src="renderer.js?v=1.5"></script>
+    <script src="app.js?v=1.5"></script>
 </body>
 </html>

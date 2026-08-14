@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         epap: document.getElementById('sliderEpap'),
         rr: document.getElementById('sliderRR'),
         fio2: document.getElementById('sliderFio2'),
+        trigger: document.getElementById('sliderTrigger'),
         compliance: document.getElementById('sliderCompliance'),
         resistance: document.getElementById('sliderResistance'),
         pmus: document.getElementById('sliderPmus'),
@@ -41,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         epap: document.getElementById('badgeEpap'),
         rr: document.getElementById('badgeRR'),
         fio2: document.getElementById('badgeFio2'),
+        trigger: document.getElementById('badgeTrigger'),
         compliance: document.getElementById('badgeCompliance'),
         resistance: document.getElementById('badgeResistance'),
         pmus: document.getElementById('badgePmus'),
@@ -48,6 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
         riseTime: document.getElementById('badgeRiseTime'),
         leak: document.getElementById('badgeLeak')
     };
+
+    // Trigger Type Knapper & Tekster
+    const btnTrigFlow = document.getElementById('btnTrigFlow');
+    const btnTrigPressure = document.getElementById('btnTrigPressure');
+    const triggerSublabel = document.getElementById('triggerSublabel');
+    const triggerLimitMin = document.getElementById('triggerLimitMin');
+    const triggerLimitMax = document.getElementById('triggerLimitMax');
+    const btnTrigStepDown = document.getElementById('btnTrigStepDown');
+    const btnTrigStepUp = document.getElementById('btnTrigStepUp');
 
     // Knapper
     const btnPause = document.getElementById('btnPause');
@@ -67,6 +78,51 @@ document.addEventListener('DOMContentLoaded', () => {
     const insightDeltaP = document.getElementById('insightDeltaP');
     const insightTheoVt = document.getElementById('insightTheoVt');
     const insightText = document.getElementById('insightText');
+
+    // Funksjon for å bytte trigger-type (Flow vs Trykk)
+    function setTriggerType(type) {
+        simulator.settings.triggerType = type;
+        if (type === 'flow') {
+            btnTrigFlow.classList.add('active');
+            btnTrigPressure.classList.remove('active');
+
+            triggerSublabel.textContent = 'Flow-trigger (1–5 L/min)';
+            triggerLimitMin.textContent = '1.0 L/min (Mest sensitiv)';
+            triggerLimitMax.textContent = '5.0 L/min (Mindre sensitiv)';
+
+            sliders.trigger.min = '1';
+            sliders.trigger.max = '5';
+            sliders.trigger.step = '0.5';
+            sliders.trigger.value = simulator.settings.triggerFlow || 3.0;
+
+            btnTrigStepDown.setAttribute('data-step', '-0.5');
+            btnTrigStepUp.setAttribute('data-step', '0.5');
+
+            badges.trigger.textContent = `${simulator.settings.triggerFlow.toFixed(1)} L/min`;
+        } else {
+            btnTrigPressure.classList.add('active');
+            btnTrigFlow.classList.remove('active');
+
+            triggerSublabel.textContent = 'Trykk-trigger (-1 til -5 cmH₂O)';
+            triggerLimitMin.textContent = '-1.0 cmH₂O (Mest sensitiv)';
+            triggerLimitMax.textContent = '-5.0 cmH₂O (Tungt arbeid)';
+
+            sliders.trigger.min = '-5';
+            sliders.trigger.max = '-1';
+            sliders.trigger.step = '0.5';
+            sliders.trigger.value = simulator.settings.triggerPressure || -2.0;
+
+            btnTrigStepDown.setAttribute('data-step', '-0.5');
+            btnTrigStepUp.setAttribute('data-step', '0.5');
+
+            badges.trigger.textContent = `${simulator.settings.triggerPressure.toFixed(1)} cmH₂O`;
+        }
+    }
+
+    if (btnTrigFlow && btnTrigPressure) {
+        btnTrigFlow.addEventListener('click', () => setTriggerType('flow'));
+        btnTrigPressure.addEventListener('click', () => setTriggerType('pressure'));
+    }
 
     // 3. Koble til Sliders
     function updateSimulatorFromUI() {
@@ -88,6 +144,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const cycling = parseFloat(sliders.cycling.value) / 100;
         const riseTime = parseFloat(sliders.riseTime.value) / 1000;
         const leak = parseFloat(sliders.leak.value);
+
+        // Oppdater trigger
+        if (simulator.settings.triggerType === 'flow') {
+            const trigVal = parseFloat(sliders.trigger.value);
+            simulator.settings.triggerFlow = trigVal;
+            badges.trigger.textContent = `${trigVal.toFixed(1)} L/min`;
+        } else {
+            const trigVal = parseFloat(sliders.trigger.value);
+            simulator.settings.triggerPressure = trigVal;
+            badges.trigger.textContent = `${trigVal.toFixed(1)} cmH₂O`;
+        }
 
         // Oppdater simulatoren
         simulator.settings.ipap = ipap;
@@ -231,6 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnReset.addEventListener('click', () => {
         applyPreset('normal');
+        setTriggerType('flow');
+        sliders.trigger.value = 3;
         renderer.initCanvas();
     });
 
@@ -269,7 +338,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 2. Send sample til grafisk monitor
             const wasTriggered = simulator.state.justTriggered;
-            const isTriggerPhase = simulator.state.isTriggerPhase;
+            const isFlowTrigger = simulator.state.isFlowTrigger;
+            const isPawTrigger = simulator.state.isPawTrigger;
             simulator.state.justTriggered = false;
 
             renderer.addSample(
@@ -279,7 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 simulator.state.flow,
                 wasTriggered,
                 simulator.settings.epap,
-                isTriggerPhase
+                isFlowTrigger,
+                isPawTrigger
             );
 
             // 3. Oppdater måletall

@@ -6,7 +6,7 @@
  * - Paw (Trykk): Tydelig 0 cmH2O bunnlinje og PEEP-nivå [Gul/Orange]
  * - Flow (V̇ / Débit): Tydelig 0-linje i midten med arealvisning (+/-) [Hamilton Rosa/Magenta]
  * - Volum (V): Tydelig 0 ml grunnlinje og dynamisk fylling [Grønn]
- * - Sekundmarkører (1..6s) og trigger-indikatorer (▲) ved pustestart
+ * - Sekundmarkører (5s intervaller / 1s grid på 25s sveip) og trigger-indikatorer (▲) ved pustestart
  * - Jevn 60 FPS Sweep-bar med gradient erase-sone
  */
 
@@ -50,7 +50,7 @@ class WaveformRenderer {
         this.rightMargin = 16;  // Luft på høyre side
         
         // Sweep innstillinger
-        this.sweepDuration = 6.0; // sekunder for ett helt sveip over skjermen
+        this.sweepDuration = 25.0; // sekunder for ett helt sveip over skjermen (25 sekunder)
         this.sweepTime = 0;
         this.sweepX = 0;          // Relativ pikselposisjon (0..activeWidth)
         this.eraseWidth = 24;     // Piksler foran sveipelinjen
@@ -60,8 +60,9 @@ class WaveformRenderer {
         this.pressureData = [];
         this.volumeData = [];
         this.flowData = [];
-        this.flowTriggerData = []; // Lagrer triggerstatus per pikselposisjon på flowkurven
-        this.triggerData = [];    // Lagrer trigger-trekanter per pikselposisjon
+        this.flowTriggerData = []; // Lagrer flow-trigger status per pikselposisjon
+        this.pawTriggerData = [];  // Lagrer trykk-trigger status per pikselposisjon (undertrykk)
+        this.triggerData = [];     // Lagrer trigger-trekanter per pikselposisjon
 
         // Skalaer (Min / Maks grenser)
         this.scales = {
@@ -109,11 +110,12 @@ class WaveformRenderer {
         this.volumeData = new Array(this.activeWidth).fill(null);
         this.flowData = new Array(this.activeWidth).fill(null);
         this.flowTriggerData = new Array(this.activeWidth).fill(false);
+        this.pawTriggerData = new Array(this.activeWidth).fill(false);
         this.triggerData = new Array(this.activeWidth).fill(false);
     }
 
     // Legg til nye dataprøver fra simulatoren og oppdater sweep
-    addSample(dt, paw, volume, flow, isTriggered = false, epap = 5, isTriggerPhase = false) {
+    addSample(dt, paw, volume, flow, isTriggered = false, epap = 5, isFlowTrigger = false, isPawTrigger = false) {
         if (!this.activeWidth || this.activeWidth <= 0) return;
 
         this.currentEpap = epap;
@@ -148,7 +150,8 @@ class WaveformRenderer {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
-                this.flowTriggerData[x] = isTriggerPhase;
+                this.flowTriggerData[x] = isFlowTrigger;
+                this.pawTriggerData[x] = isPawTrigger;
                 this.triggerData[x] = (x === startX && isTriggered);
             }
         } else {
@@ -157,14 +160,16 @@ class WaveformRenderer {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
-                this.flowTriggerData[x] = isTriggerPhase;
+                this.flowTriggerData[x] = isFlowTrigger;
+                this.pawTriggerData[x] = isPawTrigger;
                 this.triggerData[x] = (x === startX && isTriggered);
             }
             for (let x = 0; x <= endX; x++) {
                 this.pressureData[x] = paw;
                 this.volumeData[x] = volume;
                 this.flowData[x] = flow;
-                this.flowTriggerData[x] = isTriggerPhase;
+                this.flowTriggerData[x] = isFlowTrigger;
+                this.pawTriggerData[x] = isPawTrigger;
                 this.triggerData[x] = (x === 0 && isTriggered);
             }
         }
@@ -212,19 +217,22 @@ class WaveformRenderer {
 
         // Bakgrunnsrutenett (Sekundstreker)
         const seconds = this.sweepDuration;
+        const labelInterval = (seconds > 12) ? 5 : 1; // Vis tekstetikett hvert 5. sekund for lange sveip (25s), eller 1s for korte
+
         for (let s = 0; s <= seconds; s++) {
             const x = leftM + Math.round((s / seconds) * activeW);
+            const isMajor = (s % labelInterval === 0);
             
-            // Vertikal sekundlinje
-            ctx.strokeStyle = this.colors.grid;
-            ctx.lineWidth = 1;
+            // Vertikal sekundlinje (litt tydeligere for hovedsekunder, subtilt for 1-sekunds grid)
+            ctx.strokeStyle = isMajor ? this.colors.grid : this.colors.gridSubtle;
+            ctx.lineWidth = isMajor ? 1 : 0.75;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, h);
             ctx.stroke();
 
-            // Sekundtall langs aksen mellom Paw og Flow (som på Hamilton)
-            if (s > 0 && s < seconds) {
+            // Sekundtall langs aksen mellom Paw og Flow (som på Hamilton/Servo)
+            if (s > 0 && s < seconds && isMajor) {
                 ctx.fillStyle = this.colors.textDim;
                 ctx.font = '500 9px monospace';
                 ctx.textAlign = 'center';
@@ -405,14 +413,14 @@ class WaveformRenderer {
         }
         ctx.restore();
 
-        // 3. Paw kurve
+        // 3. Paw kurve med støtte for lilla trykk-trigger markering
         const toY = (paw) => {
             const clamped = Math.max(this.scales.pawMin, Math.min(this.scales.pawMax, paw));
             const ratio = (clamped - this.scales.pawMin) / (this.scales.pawMax - this.scales.pawMin);
             return bottomY - ratio * usableH;
         };
 
-        this._renderWaveform(ctx, this.pressureData, toY, this.colors.pressure, this.colors.pressureFill, bottomY, leftM, activeW);
+        this._renderPressureWaveform(ctx, this.pressureData, this.pawTriggerData, toY, bottomY, leftM, activeW);
 
         // 4. Tegn Triggermarkører (▲) langs sekundlinjen ved pustestart
         this._renderTriggerMarks(ctx, track.top + track.height - 2, leftM);
@@ -470,6 +478,98 @@ class WaveformRenderer {
         };
 
         this._renderWaveform(ctx, this.volumeData, toY, this.colors.volume, this.colors.volumeFill, bottomY, leftM, activeW);
+    }
+
+    // Tegner Paw-kurve med støtte for lilla markering ved trykk-trigger (undertrykk under EPAP)
+    _renderPressureWaveform(ctx, data, triggerData, toYFn, baselineY, leftM, activeW) {
+        const sweepX = this.sweepX;
+        const eraseEnd = (sweepX + this.eraseWidth) % activeW;
+
+        ctx.save();
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        const drawSegment = (fromX, toX) => {
+            if (fromX >= toX) return;
+
+            // 1. Gul/Amber fylling mot bunnlinjen
+            ctx.save();
+            ctx.beginPath();
+            let started = false;
+            for (let x = fromX; x <= toX; x++) {
+                const val = data[x];
+                if (val !== null && val !== undefined) {
+                    const screenX = leftM + x;
+                    const screenY = toYFn(val);
+                    if (!started) {
+                        ctx.moveTo(screenX, baselineY);
+                        ctx.lineTo(screenX, screenY);
+                        started = true;
+                    } else {
+                        ctx.lineTo(screenX, screenY);
+                    }
+                }
+            }
+            if (started) {
+                ctx.lineTo(leftM + toX, baselineY);
+                ctx.closePath();
+                ctx.fillStyle = this.colors.pressureFill;
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // 2. Tegn Paw kurvelinje med fargeskifte til lilla ved trykk-trigger
+            let currentIsTrig = null;
+            let pathStarted = false;
+
+            for (let x = fromX; x <= toX; x++) {
+                const val = data[x];
+                if (val === null || val === undefined) {
+                    if (pathStarted) {
+                        ctx.stroke();
+                        pathStarted = false;
+                        currentIsTrig = null;
+                    }
+                    continue;
+                }
+
+                const isTrig = !!triggerData[x];
+                const screenX = leftM + x;
+                const screenY = toYFn(val);
+
+                if (!pathStarted) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = isTrig ? this.colors.flowTrigger : this.colors.pressure;
+                    ctx.lineWidth = isTrig ? 2.6 : 2.2;
+                    ctx.moveTo(screenX, screenY);
+                    pathStarted = true;
+                    currentIsTrig = isTrig;
+                } else if (isTrig !== currentIsTrig) {
+                    ctx.lineTo(screenX, screenY);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = isTrig ? this.colors.flowTrigger : this.colors.pressure;
+                    ctx.lineWidth = isTrig ? 2.6 : 2.2;
+                    ctx.moveTo(screenX, screenY);
+                    currentIsTrig = isTrig;
+                } else {
+                    ctx.lineTo(screenX, screenY);
+                }
+            }
+            if (pathStarted) {
+                ctx.stroke();
+            }
+        };
+
+        if (sweepX + this.eraseWidth < activeW) {
+            drawSegment(0, Math.floor(sweepX));
+            drawSegment(Math.floor(sweepX + this.eraseWidth), activeW - 1);
+        } else {
+            drawSegment(Math.floor(eraseEnd), Math.floor(sweepX));
+        }
+
+        ctx.restore();
     }
 
     // Tegner standard kurve (Paw eller Volum) med ren linje og valgfri subtil fylling
