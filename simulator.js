@@ -113,11 +113,11 @@ class VentilatorSimulator {
         }
 
         if (this.state.phase === 'triggering') {
-            // Pasientens tidlige muskelinnsats (Pmus)
-            // Rask stigning i starten av innpustet (ca. 40-70 ms)
-            const effortSpeed = 0.07;
-            const effortProgress = Math.min(1.0, this.state.timeInPhase / effortSpeed);
-            const currentPmus = this.patient.pmusMax * Math.sin((Math.PI / 2) * effortProgress);
+            // Pasientens inspiratoriske muskelinnsats (Pmus)
+            // Naturlig innsatsprofil over ca. 350 ms
+            const effortDuration = 0.35;
+            const effortProgress = Math.min(1.0, this.state.timeInPhase / effortDuration);
+            const currentPmus = this.patient.pmusMax * Math.sin(Math.PI * effortProgress);
             this.state.pmus = currentPmus;
 
             if (this.settings.triggerType === 'flow') {
@@ -131,13 +131,22 @@ class VentilatorSimulator {
                 this.state.isFlowTrigger = true;
                 this.state.isPawTrigger = false;
 
-                // Trigges når innstilt flow-trigger (f.eks. 3 L/min) oppnås
-                if (flow_L_min >= this.settings.triggerFlow || this.state.timeInPhase >= 0.12) {
+                // Trigges når pasientens flow oppnår innstilt flow-terskel (f.eks. 3 L/min)
+                if (flow_L_min >= this.settings.triggerFlow) {
                     this._startInspiration();
+                } else if (this.state.timeInPhase >= effortDuration) {
+                    // Pasientens innsats var utilstrekkelig (uutløst trigger / missed effort)
+                    this.state.phase = 'expiration';
+                    this.state.timeInPhase = 0;
+                    this.state.breathStartTime = this.state.totalTime;
+                    this.state.pmus = 0;
+                    this.state.flow = 0;
+                    this.state.isFlowTrigger = false;
+                    this.state.isPawTrigger = false;
                 }
             } else {
                 // TRYKK-TRIGGER:
-                // Pasienten genererer et negativt undertrykk under EPAP/PEEP før ventilen åpner
+                // Pasienten genererer et negativt undertrykk (deltaP = -Pmus) under EPAP/PEEP
                 const deltaP = -currentPmus;
                 const targetPaw = Math.max(0, this.settings.epap + deltaP);
 
@@ -147,8 +156,18 @@ class VentilatorSimulator {
                 this.state.isPawTrigger = true;
 
                 // Trigges når innstilt undertrykk (f.eks. -2 cmH2O under EPAP) oppnås
-                if (deltaP <= this.settings.triggerPressure || this.state.timeInPhase >= 0.12) {
+                // deltaP er negativ (f.eks. -2.5) og triggerPressure er negativ (f.eks. -2.0)
+                if (deltaP <= this.settings.triggerPressure) {
                     this._startInspiration();
+                } else if (this.state.timeInPhase >= effortDuration) {
+                    // Pasientens undertrykk var utilstrekkelig (uutløst trykk-trigger / missed effort)
+                    this.state.phase = 'expiration';
+                    this.state.timeInPhase = 0;
+                    this.state.breathStartTime = this.state.totalTime;
+                    this.state.pmus = 0;
+                    this.state.paw = this.settings.epap;
+                    this.state.isFlowTrigger = false;
+                    this.state.isPawTrigger = false;
                 }
             }
 
@@ -272,7 +291,7 @@ class VentilatorSimulator {
         }
     }
 
-    // Hent pedagogisk analyse og tidskonstant
+    // Hent pedagogisk analyse, tidskonstant og trigger-samkjøring
     getPhysiologicalInsights() {
         const C = this.patient.compliance;
         const R = this.patient.resistance;
@@ -281,13 +300,41 @@ class VentilatorSimulator {
         const theoreticalVt = Math.round(C * drivingPressure);
         const timeFor95Expiration = (3 * tau).toFixed(2); // 3 * Tau gir 95% tømming
 
+        // Trigger-evaluering og samkjøring
+        let isTriggerable = true;
+        let triggerMargin = 0;
+        let triggerType = this.settings.triggerType;
+        let triggerRequired = 0;
+        let patientGenerated = 0;
+
+        if (triggerType === 'pressure') {
+            triggerRequired = Math.abs(this.settings.triggerPressure);
+            patientGenerated = this.patient.pmusMax;
+            triggerMargin = parseFloat((patientGenerated - triggerRequired).toFixed(1));
+            isTriggerable = patientGenerated >= triggerRequired;
+        } else {
+            triggerRequired = this.settings.triggerFlow;
+            patientGenerated = parseFloat(((this.patient.pmusMax / R) * 60).toFixed(1));
+            triggerMargin = parseFloat((patientGenerated - triggerRequired).toFixed(1));
+            isTriggerable = patientGenerated >= triggerRequired;
+        }
+
+        let triggerNote = "";
+        if (!isTriggerable) {
+            if (triggerType === 'pressure') {
+                triggerNote = `<div style="margin-top:6px; color:#f87171;">⚠️ <strong>Pasient-ventilator asynkroni (Uutløst trigger):</strong> Innstilt trykk-trigger krever et undertrykk på <strong>${triggerRequired.toFixed(1)} cmH₂O</strong>, men pasientinnsatsen (Pmus) er kun <strong>${patientGenerated.toFixed(1)} cmH₂O</strong>. Maskinen utløses ikke! Gjør triggeren mer sensitiv (f.eks. -1.0 cmH₂O) eller øk pasientinnsatsen.</div>`;
+            } else {
+                triggerNote = `<div style="margin-top:6px; color:#f87171;">⚠️ <strong>Pasient-ventilator asynkroni (Uutløst flow-trigger):</strong> Innstilt flow-trigger krever <strong>${triggerRequired.toFixed(1)} L/min</strong>, men pasienten genererer kun <strong>${patientGenerated.toFixed(1)} L/min</strong> (Pmus/R). Maskinen utløses ikke!</div>`;
+            }
+        }
+
         let clinicalNote = "";
         if (this.patient.preset === 'copd' || R >= 12) {
-            clinicalNote = `⚠️ <strong>Obstruktiv mekanikk (KOLS):</strong> Høy motstand (R = ${R} cmH2O/(L/s)) gir en lang tidskonstant (τ = ${tau.toFixed(2)}s). Det tar minst ${timeFor95Expiration}s å tømme 95% av luften. Legg merke til den forlengede flow-halen i ekspirasjonen.`;
+            clinicalNote = `⚠️ <strong>Obstruktiv mekanikk (KOLS):</strong> Høy motstand (R = ${R} cmH2O/(L/s)) gir en lang tidskonstant (τ = ${tau.toFixed(2)}s). Det tar minst ${timeFor95Expiration}s å tømme 95% av luften. Legg merke til den forlengede flow-halen i ekspirasjonen.${triggerNote}`;
         } else if (this.patient.preset === 'restrictive' || C <= 30) {
-            clinicalNote = `⚠️ <strong>Restriktiv mekanikk (Lungeødem / Pneumoni):</strong> Stive lunger med lav ettergivelighet (C = ${C} ml/cmH2O) gir kort tidskonstant (τ = ${tau.toFixed(2)}s) og rask trykkutjevning, men gir lave tidalvolumer (forventet ca. ${theoreticalVt} ml). Øk IPAP for å kompensere.`;
+            clinicalNote = `⚠️ <strong>Restriktiv mekanikk (Lungeødem / Pneumoni):</strong> Stive lunger med lav ettergivelighet (C = ${C} ml/cmH2O) gir kort tidskonstant (τ = ${tau.toFixed(2)}s) og rask trykkutjevning, men gir lave tidalvolumer (forventet ca. ${theoreticalVt} ml). Øk IPAP for å kompensere.${triggerNote}`;
         } else {
-            clinicalNote = `✅ <strong>Normal lungemekanikk:</strong> Normal ettergivelighet og motstand (τ = ${tau.toFixed(2)}s). Lungene tømmes uanstrengt på ca. ${timeFor95Expiration}s.`;
+            clinicalNote = `✅ <strong>Normal lungemekanikk:</strong> Normal ettergivelighet og motstand (τ = ${tau.toFixed(2)}s). Lungene tømmes uanstrengt på ca. ${timeFor95Expiration}s.${triggerNote}`;
         }
 
         return {
@@ -295,6 +342,11 @@ class VentilatorSimulator {
             theoreticalVt,
             timeFor95Expiration,
             drivingPressure,
+            isTriggerable,
+            triggerMargin,
+            triggerRequired,
+            patientGenerated,
+            triggerType,
             clinicalNote
         };
     }

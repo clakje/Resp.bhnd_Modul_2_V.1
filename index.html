@@ -246,6 +246,35 @@
                                 <span id="triggerLimitMin">1.0 L/min (Mest sensitiv)</span>
                                 <span id="triggerLimitMax">5.0 L/min (Mindre sensitiv)</span>
                             </div>
+
+                            <!-- Trigger-samkjøringspanel (Sanntidskorrelasjon i cmH2O / Flow) -->
+                            <div class="trigger-sync-box" id="triggerSyncBox">
+                                <div class="trigger-sync-header">
+                                    <span class="trigger-sync-title">⚡ Pasient-samkjøring:</span>
+                                    <span class="trigger-sync-status-badge status-ok" id="triggerSyncBadge">✅ Utløses</span>
+                                </div>
+                                <div class="trigger-sync-body">
+                                    <div class="trigger-sync-comparison">
+                                        <div class="sync-item">
+                                            <span class="sync-label">Trigger krever:</span>
+                                            <span class="sync-val" id="syncTriggerReq">2.0 cmH₂O</span>
+                                        </div>
+                                        <div class="sync-vs">vs</div>
+                                        <div class="sync-item">
+                                            <span class="sync-label">Pasient (P<sub>mus</sub>):</span>
+                                            <span class="sync-val" id="syncPatientEffort">2.5 cmH₂O</span>
+                                        </div>
+                                    </div>
+                                    <!-- Visuell sammenligningsmåler -->
+                                    <div class="trigger-gauge-track" title="Pasientinnsats (søyle) vs. Triggerkrav (gul markør)">
+                                        <div class="trigger-gauge-fill" id="triggerGaugeFill" style="width: 62%;"></div>
+                                        <div class="trigger-gauge-threshold" id="triggerGaugeThreshold" style="left: 50%;"></div>
+                                    </div>
+                                    <div class="trigger-sync-message" id="triggerSyncMessage">
+                                        Pasientens innsats er stor nok til å utløse innpust (Margin: +0.5 cmH₂O).
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                     </div>
@@ -296,7 +325,7 @@
                         </div>
 
                         <!-- Pasientens muskelkraft Pmus -->
-                        <div class="control-card">
+                        <div class="control-card" id="cardPmus">
                             <div class="control-header">
                                 <div>
                                     <div class="control-label">Pasientinnsats (P<sub>mus</sub>)</div>
@@ -312,6 +341,19 @@
                             <div class="slider-limits">
                                 <span>0 (Passiv/svak)</span>
                                 <span>8 (Kraftig pustearbeid)</span>
+                            </div>
+
+                            <!-- Samkjøringsindikator i pasientfanen -->
+                            <div class="trigger-sync-box" id="pmusSyncBox">
+                                <div class="trigger-sync-header">
+                                    <span class="trigger-sync-title">⚡ Trigger-samkjøring:</span>
+                                    <span class="trigger-sync-status-badge status-ok" id="pmusSyncBadge">✅ Nok kraft</span>
+                                </div>
+                                <div class="trigger-sync-body">
+                                    <div class="trigger-sync-message" id="pmusSyncMessage">
+                                        Innstilt trykk-trigger krever 2.0 cmH₂O. Pasienten yter 2.5 cmH₂O og trigger maskinen.
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
