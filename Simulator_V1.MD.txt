@@ -1,0 +1,37 @@
+# Kravspesifikasjon Mekanisk Ventilator Simulator (NIV) - Sandkasse
+
+## 1. Mål og Konsept
+En interaktiv, responsiv webapplikasjon bygget for å gi sykepleiere en trygg sandkasse for å utforske non-invasiv ventilasjon (NIV) før praktisk opplæring. Programmet skal demonstrere hvordan endringer i maskininnstillinger og pasientens fysiologi påvirker sanntidskurver for trykk, flow og volum.
+
+## 2. Teknisk Rammeverk
+ Språk Ren HTML5, CSS3, og Vanilla JavaScript.
+ Responsivitet CSS FlexboxGrid og Media Queries for adaptiv tilpasning på mobil, nettbrett og desktop.
+ Graftegning HTML5 Canvas (f.eks. Chart.js med streaming) for glatt, rullende sanntidsanimasjon av kurver.
+ Matematisk modell Sanntidsberegning av trykk ($P$), volum ($V$) og flow ($dot{V}$) basert på den forenklede bevegelsesligningen for lungemekanikk 
+  $P_{aw} = frac{V}{C} + dot{V} times R$ 
+  (Hvor $P_{aw}$ er luftveistrykk, $C$ er compliance og $R$ er luftveismotstand).
+
+## 3. Brukergrensesnitt (UI)
+Grensesnittet deles inn i tre hovedkomponenter
+1. Monitor (Grafer) Tre synkrone sanntidsgrafer (Trykk, Flow, Volum) som ruller kontinuerlig fra høyre mot venstre.
+2. Respiratorinnstillinger (Maskinen) Slidersinput-felter for de mest grunnleggende parameterne
+    IPAP (Inspiratorisk positivt luftveistrykk)
+    EPAP  PEEP (Ekspiratorisk positivt luftveistrykk)
+    Respirasjonsfrekvens (RR)
+3. Pasientfysiologi (Pasienten) 
+    Compliance (Lungens ettergivelighet)
+    Motstand (Airway resistance)
+
+## 4. Fysiologisk og Teknisk Logikk (Fase 1 Sandkasse)
+ Sanntidsrespons Når sykepleieren drar i en slider (f.eks. øker IPAP), skal den økte trykkstøtten og det resulterende økte volumet reflekteres i grafene umiddelbart ved neste innpust.
+ Grunnleggende dynamikk 
+   Pustesyklusen (innpustutpust) dikteres av den innstilte respirasjonsfrekvensen.
+   Systemet regner matematisk ut hvor mye volum en gitt trykkforskjell (IPAP - EPAP) klarer å generere basert på valgt compliance. Lavere compliance gir flatere volumkurve.
+
+## 5. Veikart for videreutvikling (Fase 2 Avansert og Scenarier)
+Når den grunnleggende fysikkmotoren fungerer, utvides applikasjonen med
+ Avanserte innstillinger Triggerfølsomhet, stigetid (rise time), og inspiratorisk avslutning (cycling).
+ Kliniske utfordringer
+   Maskelekkasje Lekkasje-slider som gradvis fører til at volumkurven ikke returnerer til null, og at flow-kurven forskyves.
+   Autotrigging Forårsaket av lekkasje kombinert med for sensitiv trigger.
+   Dobbelt støttede pust Asynkroni som følge av feil innstilt inspiratorisk avslutning.

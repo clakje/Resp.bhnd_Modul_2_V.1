@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interaktiv NIV Respirator Simulator for opplæring i non-invasiv ventilasjon, trykkstøtte, lungemekanikk og kurveforståelse.">
+    <title>NIV Respirator Simulator - Sandkasse</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Topp-header og statuslinje -->
+    <header class="app-header">
+        <div class="brand-section">
+            <span class="logo-badge">NIV-SIM</span>
+            <div>
+                <h1 class="brand-title">Mekanisk Ventilator Simulator</h1>
+                <div class="brand-subtitle">Non-Invasiv Ventilasjon (NIV) • Sandkasse</div>
+            </div>
+        </div>
+
+        <div class="status-badge-container">
+            <div class="mode-badge" id="modeBadge">
+                <span>Modus: Spontan / Trykkstøtte (PSV)</span>
+            </div>
+        </div>
+
+        <div class="header-controls">
+            <button id="btnPause" class="btn-header" title="Pause eller fortsett simuleringen">
+                <span id="pauseIcon">⏸</span> <span id="pauseText">Pause</span>
+            </button>
+            <button id="btnReset" class="btn-header" title="Nullstill simulering og kurver">
+                <span>↺</span> <span>Nullstill</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Hovedinnhold -->
+    <main class="main-content">
+
+        <!-- Seksjon 1: Monitoren (Canvas kurver + Måleverdier) -->
+        <section class="monitor-row" aria-label="Ventilatormonitor">
+            
+            <!-- Canvas med de 3 kurvene -->
+            <div class="canvas-container">
+                <canvas id="waveformCanvas"></canvas>
+            </div>
+
+            <!-- Sidestilt måleverdi-display -->
+            <aside class="readout-panel">
+                <div class="readout-group-title">Målte pasientverdier</div>
+
+                <!-- Topptrykk Ppeak -->
+                <div class="metric-card pressure-card">
+                    <div class="metric-label">
+                        <span>P<sub>peak</sub> (Topptrykk)</span>
+                        <span class="metric-unit">cmH₂O</span>
+                    </div>
+                    <div class="metric-value" id="valPpeak">14.0</div>
+                </div>
+
+                <!-- Tidalvolum Vt -->
+                <div class="metric-card volume-card">
+                    <div class="metric-label">
+                        <span>V<sub>t</sub> (Tidalvolum)</span>
+                        <span class="metric-unit">ml</span>
+                    </div>
+                    <div class="metric-value" id="valVt">450</div>
+                </div>
+
+                <!-- Minuttvolum MV -->
+                <div class="metric-card mv-card">
+                    <div class="metric-label">
+                        <span>MV (Minuttvolum)</span>
+                        <span class="metric-unit">L/min</span>
+                    </div>
+                    <div class="metric-value" id="valMv">6.8</div>
+                </div>
+
+                <!-- Total frekvens RR -->
+                <div class="metric-card rr-card">
+                    <div class="metric-label">
+                        <span>RR<sub>tot</sub> (Frekvens)</span>
+                        <span class="metric-unit">/min</span>
+                    </div>
+                    <div class="metric-value" id="valRR">15</div>
+                </div>
+
+                <!-- Innstilte parametere -->
+                <div class="readout-group-title" style="margin-top: 4px;">Innstilte verdier</div>
+                <div class="set-parameters-box">
+                    <div class="set-param-item">
+                        <div class="param-name">IPAP</div>
+                        <div class="param-val" id="dispIpap">14</div>
+                    </div>
+                    <div class="set-param-item">
+                        <div class="param-name">EPAP</div>
+                        <div class="param-val" id="dispEpap">5</div>
+                    </div>
+                    <div class="set-param-item">
+                        <div class="param-name">FiO₂</div>
+                        <div class="param-val" id="dispFio2">30%</div>
+                    </div>
+                </div>
+            </aside>
+        </section>
+
+        <!-- Seksjon 2: Kontrollere, Presets og Innsikt -->
+        <section class="controls-container">
+            
+            <!-- Kliniske Hurtigvalg (Presets) -->
+            <div class="preset-bar">
+                <span class="preset-title">Kliniske Pasientcaser:</span>
+                <button class="preset-btn active" data-preset="normal" id="presetNormal">
+                    <span>🫁</span> Normal Lunge
+                </button>
+                <button class="preset-btn" data-preset="copd" id="presetCopd">
+                    <span>⚠️</span> KOLS (Obstruktiv)
+                </button>
+                <button class="preset-btn" data-preset="restrictive" id="presetRestrictive">
+                    <span>💧</span> Pneumoni / Lungeødem (Restriktiv)
+                </button>
+            </div>
+
+            <!-- Fane-knapper for innstillinger -->
+            <div class="panel-tabs">
+                <button class="tab-btn active" data-tab="tab-machine">Respiratorinnstillinger</button>
+                <button class="tab-btn" data-tab="tab-patient">Pasientfysiologi</button>
+                <button class="tab-btn" data-tab="tab-advanced">Avansert & Lekkasje</button>
+            </div>
+
+            <!-- Fane-innhold -->
+            <div class="tab-content">
+                
+                <!-- Fane 1: Respiratorinnstillinger -->
+                <div class="tab-pane active" id="tab-machine">
+                    <div class="controls-grid">
+                        
+                        <!-- IPAP -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">IPAP (Inspiratorisk trykk)</div>
+                                    <div class="control-sublabel">Trykkstøtte under innpust</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeIpap">14 cmH₂O</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderIpap" data-step="-1">-</button>
+                                <input type="range" id="sliderIpap" min="8" max="30" step="1" value="14">
+                                <button class="step-btn" data-target="sliderIpap" data-step="1">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>8 cmH₂O</span>
+                                <span>30 cmH₂O</span>
+                            </div>
+                        </div>
+
+                        <!-- EPAP / PEEP -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">EPAP / PEEP (Ekspiratorisk trykk)</div>
+                                    <div class="control-sublabel">Mottrykk for å holde luftveier åpne</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeEpap">5 cmH₂O</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderEpap" data-step="-1">-</button>
+                                <input type="range" id="sliderEpap" min="3" max="15" step="1" value="5">
+                                <button class="step-btn" data-target="sliderEpap" data-step="1">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>3 cmH₂O</span>
+                                <span>15 cmH₂O</span>
+                            </div>
+                        </div>
+
+                        <!-- Respirasjonsfrekvens (RR) -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Respirasjonsfrekvens (RR)</div>
+                                    <div class="control-sublabel">Pasientens spontanfrekvens</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeRR">15 /min</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderRR" data-step="-1">-</button>
+                                <input type="range" id="sliderRR" min="8" max="35" step="1" value="15">
+                                <button class="step-btn" data-target="sliderRR" data-step="1">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>8 /min</span>
+                                <span>35 /min</span>
+                            </div>
+                        </div>
+
+                        <!-- FiO2 -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">FiO₂ (Oksygenfraksjon)</div>
+                                    <div class="control-sublabel">Innblandet oksygenprosent</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeFio2">30 %</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderFio2" data-step="-5">-</button>
+                                <input type="range" id="sliderFio2" min="21" max="100" step="1" value="30">
+                                <button class="step-btn" data-target="sliderFio2" data-step="5">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>21 % (Romluft)</span>
+                                <span>100 %</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Fane 2: Pasientfysiologi -->
+                <div class="tab-pane" id="tab-patient" style="display: none;">
+                    <div class="controls-grid">
+                        
+                        <!-- Compliance -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Compliance (Ettergivelighet, C)</div>
+                                    <div class="control-sublabel">Lavere = stivere lunger (f.eks. ødem/pneumoni)</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeCompliance">50 ml/cmH₂O</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderCompliance" data-step="-5">-</button>
+                                <input type="range" id="sliderCompliance" min="15" max="100" step="1" value="50">
+                                <button class="step-btn" data-target="sliderCompliance" data-step="5">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>15 (Svært stiv)</span>
+                                <span>100 (Svært ettergivelig)</span>
+                            </div>
+                        </div>
+
+                        <!-- Motstand / Resistance -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Motstand (Airway Resistance, R)</div>
+                                    <div class="control-sublabel">Høyere = trangere luftveier (f.eks. KOLS/astma)</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeResistance">5 cmH₂O/(L/s)</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderResistance" data-step="-1">-</button>
+                                <input type="range" id="sliderResistance" min="2" max="25" step="1" value="5">
+                                <button class="step-btn" data-target="sliderResistance" data-step="1">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>2 (Normal/lav)</span>
+                                <span>25 (Alvorlig obstruksjon)</span>
+                            </div>
+                        </div>
+
+                        <!-- Pasientens muskelkraft Pmus -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Pasientinnsats (P<sub>mus</sub>)</div>
+                                    <div class="control-sublabel">Egen muskelkraft ved innpust</div>
+                                </div>
+                                <span class="control-value-pill" id="badgePmus">2.5 cmH₂O</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderPmus" data-step="-0.5">-</button>
+                                <input type="range" id="sliderPmus" min="0" max="8" step="0.5" value="2.5">
+                                <button class="step-btn" data-target="sliderPmus" data-step="0.5">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>0 (Passiv/svak)</span>
+                                <span>8 (Kraftig pustearbeid)</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Fane 3: Avansert & Lekkasje -->
+                <div class="tab-pane" id="tab-advanced" style="display: none;">
+                    <div class="controls-grid">
+                        
+                        <!-- Inspiratorisk avslutning (Cycling) -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Inspiratorisk avslutning (Cycling / E-Sense)</div>
+                                    <div class="control-sublabel">% av toppflow som avslutter innpustet</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeCycling">25 %</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderCycling" data-step="-5">-</button>
+                                <input type="range" id="sliderCycling" min="10" max="50" step="5" value="25">
+                                <button class="step-btn" data-target="sliderCycling" data-step="5">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>10 % (Lang inspirasjon)</span>
+                                <span>50 % (Kort inspirasjon)</span>
+                            </div>
+                        </div>
+
+                        <!-- Stigetid / Rise Time -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Stigetid (Rise Time)</div>
+                                    <div class="control-sublabel">Tid maskinen bruker på å nå innstilt IPAP</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeRiseTime">150 ms</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderRiseTime" data-step="-25">-</button>
+                                <input type="range" id="sliderRiseTime" min="50" max="400" step="25" value="150">
+                                <button class="step-btn" data-target="sliderRiseTime" data-step="25">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>50 ms (Bratt/rask)</span>
+                                <span>400 ms (Myk/langsom)</span>
+                            </div>
+                        </div>
+
+                        <!-- Maskelekkasje -->
+                        <div class="control-card">
+                            <div class="control-header">
+                                <div>
+                                    <div class="control-label">Maskelekkasje</div>
+                                    <div class="control-sublabel">Uønsket luftlekkasje rundt masken</div>
+                                </div>
+                                <span class="control-value-pill" id="badgeLeak">0 L/min</span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <button class="step-btn" data-target="sliderLeak" data-step="-2">-</button>
+                                <input type="range" id="sliderLeak" min="0" max="30" step="2" value="0">
+                                <button class="step-btn" data-target="sliderLeak" data-step="2">+</button>
+                            </div>
+                            <div class="slider-limits">
+                                <span>0 L/min (Tett maske)</span>
+                                <span>30 L/min (Stor lekkasje)</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Pedagogisk Innsiktsboks -->
+            <div class="insight-box">
+                <div class="insight-header">
+                    <div class="insight-title">
+                        <span>💡</span> Klinisk analyse & Fysiologisk innsikt
+                    </div>
+                    <div class="insight-metrics">
+                        <span class="insight-metric-item">Tidskonstant (τ = R×C): <strong id="insightTau">0.25 s</strong></span>
+                        <span class="insight-metric-item">Trykkstøtte (ΔP): <strong id="insightDeltaP">9 cmH₂O</strong></span>
+                        <span class="insight-metric-item">Teoretisk V<sub>t</sub>: <strong id="insightTheoVt">450 ml</strong></span>
+                    </div>
+                </div>
+                <div class="insight-text" id="insightText">
+                    ✅ <strong>Normal lungemekanikk:</strong> Normal ettergivelighet og motstand. Lungene tømmes uanstrengt i ekspirasjonen.
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Skript -->
+    <script src="simulator.js"></script>
+    <script src="renderer.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
