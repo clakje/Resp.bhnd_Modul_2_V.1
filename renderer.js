@@ -2,10 +2,12 @@
  * renderer.js - HTML5 Canvas 2D Medisinsk Ventilator Monitor (Hamilton-stil)
  * 
  * Egenskaper:
- * - Tydelige forholdstall og Y-akser på VENSTRE side for alle spor
+ * - Dynamisk Y-aksetilpasning for Paw, Flow og Volum: Skalering justeres automatisk
+ *   både opp og ned etter synlige toppverdier, slik at kurvetoppen ALDRI kuttes bort.
+ * - Tydelige forholdstall og Y-akser på VENSTRE side for alle 3 spor
  * - Paw (Trykk): Tydelig 0 cmH2O bunnlinje og PEEP-nivå [Gul/Orange]
  * - Flow (V̇ / Débit): Tydelig 0-linje i midten med arealvisning (+/-) [Hamilton Rosa/Magenta]
- * - Volum (V): Tydelig 0 ml grunnlinje og dynamisk fylling [Grønn]
+ * - Volum (V): Tydelig 0 ml grunnlinje og dynamisk fylling [Cyan]
  * - Sekundmarkører (5s intervaller / 1s grid på 25s sveip) og trigger-indikatorer (▲) ved pustestart
  * - Jevn 60 FPS Sweep-bar med gradient erase-sone
  */
@@ -15,11 +17,12 @@ class WaveformRenderer {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         
-        // Fargepalett i tråd med medisinsk standard (Hamilton Medical)
+        // Fargepalett i tråd med medisinsk standard (Hamilton Medical / Servo-u)
         this.colors = {
             bg: '#080d1a',
             grid: '#131e33',
             gridSubtle: '#0f1728',
+            gridTickLine: 'rgba(255, 255, 255, 0.045)', // Subtil referanselinje for Y-aksetikk
             axisLine: '#2a3b5c',
             sweepBar: '#ffffff',
             
@@ -64,14 +67,28 @@ class WaveformRenderer {
         this.pawTriggerData = [];  // Lagrer trykk-trigger status per pikselposisjon (undertrykk)
         this.triggerData = [];     // Lagrer trigger-trekanter per pikselposisjon
 
-        // Skalaer (Min / Maks grenser)
+        // Dynamiske skalaer (Min / Maks grenser)
         this.scales = {
             pawMax: 25,    // cmH2O
             pawMin: 0,
-            volMax: 800,   // ml
+            volMax: 600,   // ml
             volMin: 0,
-            flowMax: 60,   // L/min
-            flowMin: -60   // L/min
+            flowMax: 40,   // L/min
+            flowMin: -40   // L/min
+        };
+
+        // Standard kliniske skalanivåer for dynamisk tilpasning
+        this.scaleTiers = {
+            paw: [15, 20, 25, 30, 35, 40, 50, 60, 80, 100],
+            flow: [20, 30, 40, 60, 80, 100, 120, 150, 200, 250, 300],
+            vol: [300, 400, 500, 600, 800, 1000, 1200, 1500, 2000, 2500, 3000]
+        };
+
+        // Holdetid før skala trappes ned (unngår flimring/uro)
+        this.scaleHold = {
+            paw: 0,
+            flow: 0,
+            vol: 0
         };
 
         this.currentEpap = 5;
@@ -83,6 +100,13 @@ class WaveformRenderer {
     initCanvas() {
         this.sweepTime = 0;
         this.sweepX = 0;
+        this.scales.pawMax = 25;
+        this.scales.volMax = 600;
+        this.scales.flowMax = 40;
+        this.scales.flowMin = -40;
+        this.scaleHold.paw = 0;
+        this.scaleHold.flow = 0;
+        this.scaleHold.vol = 0;
         this.resizeCanvas();
     }
 
@@ -114,6 +138,91 @@ class WaveformRenderer {
         this.triggerData = new Array(this.activeWidth).fill(false);
     }
 
+    // Automatisk og kontinuerlig dynamisk Y-skalering for alle tre spor
+    _updateDynamicScales(dt, currentPaw, currentVol, currentFlow) {
+        if (!this.activeWidth || this.activeWidth <= 0) return;
+
+        // Finn maksimumsverdier i synlig skjermbuffer + nåværende prøve
+        let maxPaw = (currentPaw !== undefined && currentPaw !== null) ? currentPaw : 0;
+        let maxFlow = (currentFlow !== undefined && currentFlow !== null) ? Math.abs(currentFlow) : 0;
+        let maxVol = (currentVol !== undefined && currentVol !== null) ? currentVol : 0;
+
+        for (let x = 0; x < this.activeWidth; x++) {
+            const p = this.pressureData[x];
+            if (p !== null && p !== undefined && p > maxPaw) maxPaw = p;
+
+            const f = this.flowData[x];
+            if (f !== null && f !== undefined) {
+                const absF = Math.abs(f);
+                if (absF > maxFlow) maxFlow = absF;
+            }
+
+            const v = this.volumeData[x];
+            if (v !== null && v !== undefined && v > maxVol) maxVol = v;
+        }
+
+        // Beregn ønsket skalanivå med 15% headroom slik at kurvetoppen aldri berører taket eller kuttes
+        const headroomRatio = 0.85;
+
+        // 1. Paw (Trykk)
+        const targetPaw = this._findTargetTier(maxPaw / headroomRatio, this.scaleTiers.paw, 15);
+        if (targetPaw > this.scales.pawMax) {
+            // Umiddelbar oppskalering for å unngå kutting
+            this.scales.pawMax = targetPaw;
+            this.scaleHold.paw = 0;
+        } else if (targetPaw < this.scales.pawMax) {
+            this.scaleHold.paw += dt;
+            if (this.scaleHold.paw >= 1.5) { // Vent 1.5 sek etter at alle høye topper er ute av skjermen
+                this.scales.pawMax = targetPaw;
+                this.scaleHold.paw = 0;
+            }
+        } else {
+            this.scaleHold.paw = 0;
+        }
+
+        // 2. Flow
+        const targetFlow = this._findTargetTier(maxFlow / headroomRatio, this.scaleTiers.flow, 20);
+        if (targetFlow > this.scales.flowMax) {
+            this.scales.flowMax = targetFlow;
+            this.scales.flowMin = -targetFlow;
+            this.scaleHold.flow = 0;
+        } else if (targetFlow < this.scales.flowMax) {
+            this.scaleHold.flow += dt;
+            if (this.scaleHold.flow >= 1.5) {
+                this.scales.flowMax = targetFlow;
+                this.scales.flowMin = -targetFlow;
+                this.scaleHold.flow = 0;
+            }
+        } else {
+            this.scaleHold.flow = 0;
+        }
+
+        // 3. Volum
+        const targetVol = this._findTargetTier(maxVol / headroomRatio, this.scaleTiers.vol, 300);
+        if (targetVol > this.scales.volMax) {
+            this.scales.volMax = targetVol;
+            this.scaleHold.vol = 0;
+        } else if (targetVol < this.scales.volMax) {
+            this.scaleHold.vol += dt;
+            if (this.scaleHold.vol >= 1.5) {
+                this.scales.volMax = targetVol;
+                this.scaleHold.vol = 0;
+            }
+        } else {
+            this.scaleHold.vol = 0;
+        }
+    }
+
+    _findTargetTier(val, tiers, defaultMin) {
+        for (let i = 0; i < tiers.length; i++) {
+            if (tiers[i] >= val) {
+                return tiers[i];
+            }
+        }
+        // Dersom verdien overskrider definerte tiers, rund av pent oppover til nærmeste 10/100
+        return Math.ceil(val / 10) * 10;
+    }
+
     // Legg til nye dataprøver fra simulatoren og oppdater sweep
     addSample(dt, paw, volume, flow, isTriggered = false, epap = 5, isFlowTrigger = false, isPawTrigger = false) {
         if (!this.activeWidth || this.activeWidth <= 0) return;
@@ -128,18 +237,8 @@ class WaveformRenderer {
         this.sweepX = (this.sweepTime / this.sweepDuration) * this.activeWidth;
         const currentPx = Math.floor(this.sweepX);
 
-        // Dynamisk tilpasning av skalaer dersom verdiene overskrider
-        if (paw > this.scales.pawMax - 2) {
-            this.scales.pawMax = Math.min(50, Math.ceil(paw / 5) * 5 + 5);
-        }
-        if (volume > this.scales.volMax - 50) {
-            this.scales.volMax = Math.min(1500, Math.ceil(volume / 100) * 100 + 100);
-        }
-        if (Math.abs(flow) > this.scales.flowMax - 5) {
-            const newMax = Math.min(150, Math.ceil(Math.abs(flow) / 20) * 20 + 20);
-            this.scales.flowMax = newMax;
-            this.scales.flowMin = -newMax;
-        }
+        // Oppdater dynamiske Y-akser
+        this._updateDynamicScales(dt, paw, volume, flow);
 
         // Fyll inn i buffer
         const startX = Math.floor(prevX);
@@ -208,7 +307,7 @@ class WaveformRenderer {
         // 4. Tegn Sweep Bar og Erase Zone
         this._drawSweepBar(ctx, h, leftM, activeW);
 
-        // 5. Tegn Y-akser og forholdstall på venstre side
+        // 5. Tegn Y-akser, dynamiske skalaer og forholdstall på venstre side
         this._drawLeftYAxes(ctx, tracks, leftM, activeW);
     }
 
@@ -240,7 +339,7 @@ class WaveformRenderer {
             }
         }
 
-        // Spor-oppdeling (Horisontale skillelinjer)
+        // Spor-oppdeling (Horisontale skillelinjer mellom de tre sporene)
         tracks.forEach((track, index) => {
             if (index > 0) {
                 ctx.strokeStyle = this.colors.axisLine;
@@ -255,6 +354,40 @@ class WaveformRenderer {
         ctx.restore();
     }
 
+    // Genererer pene, logiske og klinisk gjenkjennelige tikk-verdier for valgt skala
+    _getTicksForScale(type, maxVal) {
+        if (type === 'paw') {
+            if (maxVal <= 15) return [15, 10, 5, 0];
+            if (maxVal <= 20) return [20, 15, 10, 5, 0];
+            if (maxVal <= 25) return [25, 20, 15, 10, 5, 0];
+            if (maxVal <= 30) return [30, 20, 10, 0];
+            if (maxVal <= 35) return [35, 25, 15, 5, 0];
+            if (maxVal <= 40) return [40, 30, 20, 10, 0];
+            if (maxVal <= 50) return [50, 40, 30, 20, 10, 0];
+            if (maxVal <= 60) return [60, 40, 20, 0];
+            if (maxVal <= 80) return [80, 60, 40, 20, 0];
+            if (maxVal <= 100) return [100, 75, 50, 25, 0];
+            return this._calculateTicks(0, maxVal, 4);
+        } else if (type === 'flow') {
+            const mid = Math.round(maxVal / 2);
+            return [maxVal, mid, 0, -mid, -maxVal];
+        } else if (type === 'vol') {
+            if (maxVal <= 300) return [300, 200, 100, 0];
+            if (maxVal <= 400) return [400, 300, 200, 100, 0];
+            if (maxVal <= 500) return [500, 400, 300, 200, 100, 0];
+            if (maxVal <= 600) return [600, 400, 200, 0];
+            if (maxVal <= 800) return [800, 600, 400, 200, 0];
+            if (maxVal <= 1000) return [1000, 750, 500, 250, 0];
+            if (maxVal <= 1200) return [1200, 900, 600, 300, 0];
+            if (maxVal <= 1500) return [1500, 1000, 500, 0];
+            if (maxVal <= 2000) return [2000, 1500, 1000, 500, 0];
+            if (maxVal <= 2500) return [2500, 2000, 1500, 1000, 500, 0];
+            if (maxVal <= 3000) return [3000, 2000, 1000, 0];
+            return this._calculateTicks(0, maxVal, 4);
+        }
+        return this._calculateTicks(0, maxVal, 4);
+    }
+
     _drawLeftYAxes(ctx, tracks, leftM, activeW) {
         ctx.save();
 
@@ -266,11 +399,13 @@ class WaveformRenderer {
         ctx.lineTo(leftM, this.logicalHeight);
         ctx.stroke();
 
+        const paddingBottom = 12;
+        const paddingTop = 28;
+
         // 1. Paw Akse (Øverst)
         const pTrack = tracks[0];
-        const pPadding = 12;
-        const pTopY = pTrack.top + 34;
-        const pBottomY = pTrack.top + pTrack.height - pPadding;
+        const pTopY = pTrack.top + paddingTop;
+        const pBottomY = pTrack.top + pTrack.height - paddingBottom;
         const pUsableH = pBottomY - pTopY;
 
         // Tittel & Enhet øverst til venstre
@@ -283,13 +418,24 @@ class WaveformRenderer {
         ctx.fillText('cmH₂O', 8, pTrack.top + 26);
 
         // Skalaverdier (forholdstall) for Paw
-        const pawTicks = this._calculateTicks(0, this.scales.pawMax, 4);
+        const pawTicks = this._getTicksForScale('paw', this.scales.pawMax);
         pawTicks.forEach(val => {
-            const ratio = (val - this.scales.pawMin) / (this.scales.pawMax - this.scales.pawMin);
+            const ratio = val / this.scales.pawMax;
             const y = pBottomY - ratio * pUsableH;
             
+            // Subtil horisontal referanselinje over kurvefeltet (som på Servo/Hamilton)
+            if (val > 0 && val < this.scales.pawMax) {
+                ctx.strokeStyle = this.colors.gridTickLine;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(leftM, y);
+                ctx.lineTo(leftM + activeW, y);
+                ctx.stroke();
+            }
+
             // Tikk-merke
             ctx.strokeStyle = this.colors.axisLine;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(leftM - 5, y);
             ctx.lineTo(leftM, y);
@@ -304,9 +450,8 @@ class WaveformRenderer {
 
         // 2. Flow Akse (I midten)
         const fTrack = tracks[1];
-        const fPadding = 12;
-        const fTopY = fTrack.top + 34;
-        const fBottomY = fTrack.top + fTrack.height - fPadding;
+        const fTopY = fTrack.top + paddingTop;
+        const fBottomY = fTrack.top + fTrack.height - paddingBottom;
         const fZeroY = fTopY + (fBottomY - fTopY) / 2;
         const fHalfH = (fBottomY - fTopY) / 2;
 
@@ -321,15 +466,25 @@ class WaveformRenderer {
 
         // Skalaverdier for Flow (+Max, +Mid, 0, -Mid, -Max)
         const fMax = this.scales.flowMax;
-        const fMid = Math.round(fMax / 2);
-        const flowTicks = [fMax, fMid, 0, -fMid, -fMax];
+        const flowTicks = this._getTicksForScale('flow', fMax);
 
         flowTicks.forEach(val => {
             const ratio = val / fMax; // -1 til +1
             const y = fZeroY - ratio * fHalfH;
 
+            // Subtil referanselinje
+            if (Math.abs(val) > 0 && Math.abs(val) < fMax) {
+                ctx.strokeStyle = this.colors.gridTickLine;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(leftM, y);
+                ctx.lineTo(leftM + activeW, y);
+                ctx.stroke();
+            }
+
             // Tikk-merke
             ctx.strokeStyle = (val === 0) ? this.colors.zeroLine : this.colors.axisLine;
+            ctx.lineWidth = (val === 0) ? 1.5 : 1;
             ctx.beginPath();
             ctx.moveTo(leftM - 6, y);
             ctx.lineTo(leftM, y);
@@ -345,9 +500,8 @@ class WaveformRenderer {
 
         // 3. Volum Akse (Nederst)
         const vTrack = tracks[2];
-        const vPadding = 12;
-        const vTopY = vTrack.top + 34;
-        const vBottomY = vTrack.top + vTrack.height - vPadding;
+        const vTopY = vTrack.top + paddingTop;
+        const vBottomY = vTrack.top + vTrack.height - paddingBottom;
         const vUsableH = vBottomY - vTopY;
 
         // Tittel & Enhet
@@ -360,13 +514,24 @@ class WaveformRenderer {
         ctx.fillText('ml', 8, vTrack.top + 26);
 
         // Skalaverdier for Volum
-        const volTicks = this._calculateTicks(0, this.scales.volMax, 4);
+        const volTicks = this._getTicksForScale('vol', this.scales.volMax);
         volTicks.forEach(val => {
-            const ratio = (val - this.scales.volMin) / (this.scales.volMax - this.scales.volMin);
+            const ratio = val / this.scales.volMax;
             const y = vBottomY - ratio * vUsableH;
+
+            // Subtil referanselinje
+            if (val > 0 && val < this.scales.volMax) {
+                ctx.strokeStyle = this.colors.gridTickLine;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(leftM, y);
+                ctx.lineTo(leftM + activeW, y);
+                ctx.stroke();
+            }
 
             // Tikk-merke
             ctx.strokeStyle = this.colors.axisLine;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(leftM - 5, y);
             ctx.lineTo(leftM, y);
@@ -383,9 +548,10 @@ class WaveformRenderer {
     }
 
     _drawPressureTrack(ctx, track, leftM, activeW) {
-        const pPadding = 12;
-        const bottomY = track.top + track.height - pPadding;
-        const topY = track.top + 34;
+        const paddingBottom = 12;
+        const paddingTop = 28;
+        const bottomY = track.top + track.height - paddingBottom;
+        const topY = track.top + paddingTop;
         const usableH = bottomY - topY;
         const rightEdge = leftM + activeW;
 
@@ -400,7 +566,7 @@ class WaveformRenderer {
 
         // 2. PEEP / EPAP referanselinje (subtil stiplet linje som viser grunntrykket)
         if (this.currentEpap > 0) {
-            const epapRatio = (this.currentEpap - this.scales.pawMin) / (this.scales.pawMax - this.scales.pawMin);
+            const epapRatio = this.currentEpap / this.scales.pawMax;
             const epapY = bottomY - epapRatio * usableH;
             ctx.strokeStyle = this.colors.peepLine;
             ctx.lineWidth = 1;
@@ -415,8 +581,8 @@ class WaveformRenderer {
 
         // 3. Paw kurve med støtte for lilla trykk-trigger markering
         const toY = (paw) => {
-            const clamped = Math.max(this.scales.pawMin, Math.min(this.scales.pawMax, paw));
-            const ratio = (clamped - this.scales.pawMin) / (this.scales.pawMax - this.scales.pawMin);
+            const clamped = Math.max(0, Math.min(this.scales.pawMax, paw));
+            const ratio = clamped / this.scales.pawMax;
             return bottomY - ratio * usableH;
         };
 
@@ -427,9 +593,10 @@ class WaveformRenderer {
     }
 
     _drawFlowTrack(ctx, track, leftM, activeW) {
-        const fPadding = 12;
-        const topY = track.top + 34;
-        const bottomY = track.top + track.height - fPadding;
+        const paddingBottom = 12;
+        const paddingTop = 28;
+        const topY = track.top + paddingTop;
+        const bottomY = track.top + track.height - paddingBottom;
         const zeroY = topY + (bottomY - topY) / 2;
         const halfH = (bottomY - topY) / 2;
         const rightEdge = leftM + activeW;
@@ -455,9 +622,10 @@ class WaveformRenderer {
     }
 
     _drawVolumeTrack(ctx, track, leftM, activeW) {
-        const vPadding = 12;
-        const bottomY = track.top + track.height - vPadding;
-        const topY = track.top + 32;
+        const paddingBottom = 12;
+        const paddingTop = 28;
+        const bottomY = track.top + track.height - paddingBottom;
+        const topY = track.top + paddingTop;
         const usableH = bottomY - topY;
         const rightEdge = leftM + activeW;
 
@@ -472,8 +640,8 @@ class WaveformRenderer {
         ctx.restore();
 
         const toY = (vol) => {
-            const clamped = Math.max(this.scales.volMin, Math.min(this.scales.volMax, vol));
-            const ratio = (clamped - this.scales.volMin) / (this.scales.volMax - this.scales.volMin);
+            const clamped = Math.max(0, Math.min(this.scales.volMax, vol));
+            const ratio = clamped / this.scales.volMax;
             return bottomY - ratio * usableH;
         };
 
