@@ -3,8 +3,8 @@
  * 
  * Tegner tre synkroniserte kurver med "Sweep Bar"-effekt:
  * 1. Trykk (Paw) [Gul/Orange]
- * 2. Tidalvolum (V) [Grønn]
- * 3. Flow (V') [Blå]
+ * 2. Flow (V̇) [Blå]
+ * 3. Tidalvolum (V) [Grønn]
  */
 
 class WaveformRenderer {
@@ -24,9 +24,9 @@ class WaveformRenderer {
             volumeFill: 'rgba(16, 185, 129, 0.08)',
             flow: '#0ea5e9',     // Blå
             flowFill: 'rgba(14, 165, 233, 0.08)',
-            zeroLine: 'rgba(255, 255, 255, 0.2)',
+            zeroLine: 'rgba(255, 255, 255, 0.55)', // Tydelig og godt synlig null-0 linje
             text: '#94a3b8',
-            textBright: '#e2e8f0'
+            textBright: '#ffffff'
         };
 
         // Sweep innstillinger
@@ -56,6 +56,8 @@ class WaveformRenderer {
     }
 
     initCanvas() {
+        this.sweepTime = 0;
+        this.sweepX = 0;
         this.resizeCanvas();
     }
 
@@ -140,24 +142,27 @@ class WaveformRenderer {
         ctx.fillStyle = this.colors.bg;
         ctx.fillRect(0, 0, w, h);
 
-        // Tre spor (Tracks): Trykk øverst, Volum i midten, Flow nederst
+        // Tre spor (Tracks): 1. Trykk øverst, 2. Flow i midten, 3. Volum nederst
         const trackHeight = h / 3;
         const tracks = [
             { id: 'paw', label: 'TRYKK (Paw)', unit: 'cmH₂O', color: this.colors.pressure, top: 0, height: trackHeight },
-            { id: 'vol', label: 'TIDALVOLUM (V)', unit: 'ml', color: this.colors.volume, top: trackHeight, height: trackHeight },
-            { id: 'flow', label: 'FLOW (V̇)', unit: 'L/min', color: this.colors.flow, top: trackHeight * 2, height: trackHeight }
+            { id: 'flow', label: 'FLOW (V̇)', unit: 'L/min', color: this.colors.flow, top: trackHeight, height: trackHeight },
+            { id: 'vol', label: 'TIDALVOLUM (V)', unit: 'ml', color: this.colors.volume, top: trackHeight * 2, height: trackHeight }
         ];
 
         // 2. Tegn rutenett og seksjonsdelere
         this._drawGrid(ctx, w, h, tracks);
 
-        // 3. Tegn kurvene for hvert spor
+        // 3. Tegn kurvene og 0-linjer for hvert spor
         this._drawPressureTrack(ctx, tracks[0], w);
-        this._drawVolumeTrack(ctx, tracks[1], w);
-        this._drawFlowTrack(ctx, tracks[2], w);
+        this._drawFlowTrack(ctx, tracks[1], w);
+        this._drawVolumeTrack(ctx, tracks[2], w);
 
         // 4. Tegn Sweep Bar og Erase Zone
         this._drawSweepBar(ctx, w, h);
+
+        // 5. Tegn etiketter og skalaer over kurvene (alltid knivskarpe)
+        this._drawTrackLabels(ctx, w, tracks);
     }
 
     _drawGrid(ctx, w, h, tracks) {
@@ -175,11 +180,12 @@ class WaveformRenderer {
             ctx.stroke();
         }
 
-        // Spor-oppdeling og etiketter
+        // Spor-oppdeling og horisontale midtlinjer
         tracks.forEach((track, index) => {
             // Skillelinje mellom spor
             if (index > 0) {
                 ctx.strokeStyle = this.colors.gridBold;
+                ctx.lineWidth = 1.5;
                 ctx.beginPath();
                 ctx.moveTo(0, track.top);
                 ctx.lineTo(w, track.top);
@@ -188,20 +194,33 @@ class WaveformRenderer {
 
             // Horisontale subtile linjer i sporet
             ctx.strokeStyle = this.colors.grid;
+            ctx.lineWidth = 1;
             const midY = track.top + track.height / 2;
             ctx.beginPath();
             ctx.moveTo(0, midY);
             ctx.lineTo(w, midY);
             ctx.stroke();
+        });
 
-            // Etikett øverst i venstre hjørne av sporet
+        ctx.restore();
+    }
+
+    _drawTrackLabels(ctx, w, tracks) {
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+
+        tracks.forEach(track => {
+            // Etikett øverst i venstre hjørne av sporet (f.eks. TRYKK (Paw))
             ctx.fillStyle = track.color;
-            ctx.font = '600 12px "Segoe UI", system-ui, sans-serif';
-            ctx.fillText(`${track.label}`, 12, track.top + 18);
+            ctx.font = '600 12px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText(track.label, 12, track.top + 18);
 
+            // Enhet (f.eks. [cmH₂O])
+            const labelWidth = ctx.measureText(track.label).width;
             ctx.fillStyle = this.colors.text;
             ctx.font = '500 10px monospace';
-            ctx.fillText(`[${track.unit}]`, 12 + ctx.measureText(`${track.label} `).width, track.top + 18);
+            ctx.fillText(`[${track.unit}]`, 12 + labelWidth + 6, track.top + 18);
         });
 
         ctx.restore();
@@ -213,12 +232,28 @@ class WaveformRenderer {
         const topY = track.top + 28;
         const usableH = bottomY - topY;
 
+        // 0-linje (grunnlinje for trykk) - Tydelig og synlig
+        ctx.save();
+        ctx.strokeStyle = this.colors.zeroLine;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, bottomY);
+        ctx.lineTo(w - 38, bottomY);
+        ctx.stroke();
+        ctx.restore();
+
         // Skalaverdier
+        ctx.save();
         ctx.fillStyle = this.colors.text;
         ctx.font = '10px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(`${this.scales.pawMax}`, w - 10, topY + 4);
-        ctx.fillText('0', w - 10, bottomY);
+        ctx.fillText(`${this.scales.pawMax}`, w - 14, topY + 4);
+        
+        ctx.fillStyle = this.colors.textBright;
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText('0', w - 14, bottomY + 3);
+        ctx.restore();
 
         // Tegn Paw-kurve
         const toY = (paw) => {
@@ -230,52 +265,40 @@ class WaveformRenderer {
         this._renderWaveform(ctx, this.pressureData, toY, this.colors.pressure, this.colors.pressureFill, bottomY);
     }
 
-    _drawVolumeTrack(ctx, track, w) {
-        const vPadding = 12;
-        const bottomY = track.top + track.height - vPadding;
-        const topY = track.top + 28;
-        const usableH = bottomY - topY;
-
-        // Skalaverdier
-        ctx.fillStyle = this.colors.text;
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${this.scales.volMax}`, w - 10, topY + 4);
-        ctx.fillText('0', w - 10, bottomY);
-
-        const toY = (vol) => {
-            const clamped = Math.max(this.scales.volMin, Math.min(this.scales.volMax, vol));
-            const ratio = (clamped - this.scales.volMin) / (this.scales.volMax - this.scales.volMin);
-            return bottomY - ratio * usableH;
-        };
-
-        this._renderWaveform(ctx, this.volumeData, toY, this.colors.volume, this.colors.volumeFill, bottomY);
-    }
-
     _drawFlowTrack(ctx, track, w) {
         const fPadding = 12;
-        const zeroY = track.top + track.height / 2 + 6;
         const topY = track.top + 28;
         const bottomY = track.top + track.height - fPadding;
         const halfH = (bottomY - topY) / 2;
+        const zeroY = topY + halfH;
 
-        // 0-linje
+        // 0-linje for Flow - Ekstra tydelig, markant og godt synlig (baseline for innpust / utpust)
         ctx.save();
         ctx.strokeStyle = this.colors.zeroLine;
-        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([6, 4]);
         ctx.beginPath();
         ctx.moveTo(0, zeroY);
-        ctx.lineTo(w, zeroY);
+        ctx.lineTo(w - 38, zeroY);
         ctx.stroke();
         ctx.restore();
 
         // Skalaverdier
+        ctx.save();
         ctx.fillStyle = this.colors.text;
         ctx.font = '10px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText(`+${this.scales.flowMax}`, w - 10, topY + 4);
-        ctx.fillText('0', w - 10, zeroY + 3);
-        ctx.fillText(`${this.scales.flowMin}`, w - 10, bottomY);
+        ctx.fillText(`+${this.scales.flowMax}`, w - 14, topY + 4);
+        
+        // Ekstra fremhevet 0-markør
+        ctx.fillStyle = this.colors.textBright;
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText('0', w - 14, zeroY + 4);
+
+        ctx.fillStyle = this.colors.text;
+        ctx.font = '10px monospace';
+        ctx.fillText(`${this.scales.flowMin}`, w - 14, bottomY);
+        ctx.restore();
 
         const toY = (flow) => {
             const clamped = Math.max(this.scales.flowMin, Math.min(this.scales.flowMax, flow));
@@ -284,6 +307,44 @@ class WaveformRenderer {
         };
 
         this._renderWaveform(ctx, this.flowData, toY, this.colors.flow, this.colors.flowFill, zeroY);
+    }
+
+    _drawVolumeTrack(ctx, track, w) {
+        const vPadding = 12;
+        const bottomY = track.top + track.height - vPadding;
+        const topY = track.top + 28;
+        const usableH = bottomY - topY;
+
+        // 0-linje (grunnlinje for volum) - Tydelig og synlig
+        ctx.save();
+        ctx.strokeStyle = this.colors.zeroLine;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, bottomY);
+        ctx.lineTo(w - 38, bottomY);
+        ctx.stroke();
+        ctx.restore();
+
+        // Skalaverdier
+        ctx.save();
+        ctx.fillStyle = this.colors.text;
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${this.scales.volMax}`, w - 14, topY + 4);
+        
+        ctx.fillStyle = this.colors.textBright;
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText('0', w - 14, bottomY + 3);
+        ctx.restore();
+
+        const toY = (vol) => {
+            const clamped = Math.max(this.scales.volMin, Math.min(this.scales.volMax, vol));
+            const ratio = (clamped - this.scales.volMin) / (this.scales.volMax - this.scales.volMin);
+            return bottomY - ratio * usableH;
+        };
+
+        this._renderWaveform(ctx, this.volumeData, toY, this.colors.volume, this.colors.volumeFill, bottomY);
     }
 
     _renderWaveform(ctx, data, toYFn, strokeColor, fillColor, baselineY) {

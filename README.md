@@ -9,8 +9,8 @@ En interaktiv, sanntids webapplikasjon bygget for sykepleiere og helsepersonell 
 - **Realistisk Fysikkmotor:** Løser bevegelsesligningen for lungemekanikk ($P_{aw} + P_{mus} = \frac{V}{C} + \dot{V} \cdot R$) i sanntid.
 - **Medisinsk Monitor med Sweep-bar:** 60 FPS HTML5 Canvas 2D-kurver med sweep-slettelinje og rutenett.
   - **Trykk ($P_{aw}$):** Gul/Oransje
-  - **Tidalvolum ($V$):** Grønn
   - **Flow ($\dot{V}$):** Blå
+  - **Tidalvolum ($V$):** Grønn
 - **Kliniske Pasientcaser (Presets):**
   - **Normal Lunge:** $C = 50\text{ ml/cmH}_2\text{O}, R = 5\text{ cmH}_2\text{O}/(\text{L/s})$
   - **KOLS (Obstruktiv):** $C = 70, R = 18$ (forlenget ekspirasjon og flow-hale)
