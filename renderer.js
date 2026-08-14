@@ -8,7 +8,7 @@
  * - Paw (Trykk): Tydelig 0 cmH2O bunnlinje og PEEP-nivå [Gul/Orange]
  * - Flow (V̇ / Débit): Tydelig 0-linje i midten med arealvisning (+/-) [Hamilton Rosa/Magenta]
  * - Volum (V): Tydelig 0 ml grunnlinje og dynamisk fylling [Cyan]
- * - Sekundmarkører (5s intervaller / 1s grid på 25s sveip) og trigger-indikatorer (▲) ved pustestart
+ * - Sekundmarkører (5s intervaller / 1s grid på 15s sveip) og trigger-indikatorer (▲) ved pustestart
  * - Jevn 60 FPS Sweep-bar med gradient erase-sone
  */
 
@@ -53,7 +53,7 @@ class WaveformRenderer {
         this.rightMargin = 16;  // Luft på høyre side
         
         // Sweep innstillinger
-        this.sweepDuration = 25.0; // sekunder for ett helt sveip over skjermen (25 sekunder)
+        this.sweepDuration = 15.0; // sekunder for ett helt sveip over skjermen (15 sekunder)
         this.sweepTime = 0;
         this.sweepX = 0;          // Relativ pikselposisjon (0..activeWidth)
         this.eraseWidth = 24;     // Piksler foran sveipelinjen
@@ -316,7 +316,7 @@ class WaveformRenderer {
 
         // Bakgrunnsrutenett (Sekundstreker)
         const seconds = this.sweepDuration;
-        const labelInterval = (seconds > 12) ? 5 : 1; // Vis tekstetikett hvert 5. sekund for lange sveip (25s), eller 1s for korte
+        const labelInterval = (seconds > 12) ? 5 : 1; // Vis tekstetikett hvert 5. sekund for lange sveip (15s/25s), eller 1s for korte
 
         for (let s = 0; s <= seconds; s++) {
             const x = leftM + Math.round((s / seconds) * activeW);
